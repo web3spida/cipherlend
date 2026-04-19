@@ -82,6 +82,16 @@ Note: current portal actions are primarily product/demo UX flows and are not yet
 - **Frontend**: React, Vite, React Router, Tailwind utilities, Motion
 - **Infra**: Netlify (frontend), configurable RPC/deployment targets
 
+## CoFHE SDK Migration Notes
+
+CipherLend backend FHE utilities are aligned with the `@cofhe/sdk` builder-pattern API.
+
+- Deprecated flow: `FHE.decrypt()` is no longer used.
+- View decryption (off-chain UI): use `decryptForView` with permit context.
+- Transaction decryption (on-chain publish): use `decryptForTx` to receive `{ ctHash, decryptedValue, signature }`, then call `FHE.publishDecryptResult(...)` in the contract flow.
+- Encryption uses `encryptInputs([...]).execute()` with explicit input types.
+- CoFHE client setup follows explicit config/client/connect sequencing with viem-compatible clients.
+
 ## Project Structure
 
 ```text
@@ -155,6 +165,7 @@ npm run typecheck
 Backend and deployment flows rely on environment variables such as:
 - `FHENIX_RPC_URL`
 - `PRIVATE_KEY`
+- `COFHE_CHAIN_NAME` (`sepolia` | `arbSepolia` | `baseSepolia` | `hardhat` | `localcofhe`)
 - `BORROWER_REGISTRY_ADDRESS`
 - `UNDERWRITING_ENGINE_ADDRESS`
 - `LOAN_VAULT_ADDRESS`
