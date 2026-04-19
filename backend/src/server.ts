@@ -5,6 +5,7 @@ import underwritingRoutes from "./routes/underwriting";
 import loansRoutes from "./routes/loans";
 import auditRoutes from "./routes/audit";
 import permitsRoutes from "./routes/permits";
+import decryptRoutes from "./routes/decrypt";
 
 dotenv.config();
 
@@ -20,6 +21,7 @@ app.use("/api/v1/underwriting", underwritingRoutes);
 app.use("/api/v1/loans", loansRoutes);
 app.use("/api/v1/audit", auditRoutes);
 app.use("/api/v1/permits", permitsRoutes);
+app.use("/api/v1/decrypt", decryptRoutes);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   res.status(500).json({ error: err.message });
