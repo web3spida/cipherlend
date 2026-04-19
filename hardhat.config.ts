@@ -28,6 +28,19 @@ const config: any = {
       chainId: 8008135,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
+    baseSepolia: {
+      url:
+        process.env.BASE_SEPOLIA_RPC_URL ||
+        process.env.BASE_SEPOLIA_FLASHBLOCKS_RPC_URL ||
+        "https://sepolia.base.org",
+      chainId: 84532,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+  },
+  etherscan: {
+    apiKey: {
+      baseSepolia: process.env.BASESCAN_API_KEY || "",
+    },
   },
   paths: {
     sources: "./contracts",

@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit && tsc -p backend/tsconfig.json --noEmit",
     "compile": "hardhat --config hardhat.config.cjs compile",
     "test": "hardhat --config hardhat.config.cjs test",
-    "deploy:helium": "hardhat --config hardhat.config.cjs run scripts/deploy.ts --network fhenixHelium"
+    "deploy:helium": "hardhat --config hardhat.config.cjs run scripts/deploy.ts --network fhenixHelium",
+    "deploy:base-sepolia": "hardhat --config hardhat.config.cjs run scripts/deploy.ts --network baseSepolia"
   },
   "dependencies": {
     "@cofhe/sdk": "^0.4.0",

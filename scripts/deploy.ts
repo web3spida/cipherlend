@@ -36,7 +36,7 @@ async function main() {
   console.log("LoanVault:", deployed.loanVault);
   console.log("PermitRegistry:", deployed.permitRegistry);
 
-  if (network.name === "fhenixHelium") {
+  if (network.name === "fhenixHelium" || network.name === "baseSepolia") {
     await verifyContract(deployed.borrowerRegistry, []);
     await verifyContract(deployed.underwritingEngine, [deployed.borrowerRegistry]);
     await verifyContract(deployed.loanVault, [deployed.underwritingEngine]);
