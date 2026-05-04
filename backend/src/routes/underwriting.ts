@@ -1,23 +1,48 @@
 import { Router } from "express";
 import { getUnderwritingEngine } from "../lib/contracts";
 
-type PermissionPayload = {
-  publicKey: string;
-  signature: string;
-};
-
-const parsePermission = (raw: string | undefined): PermissionPayload => {
-  if (!raw) {
-    throw new Error("Missing permit header");
-  }
-  const parsed = JSON.parse(raw) as PermissionPayload;
-  if (!parsed.publicKey || !parsed.signature) {
-    throw new Error("Invalid permit payload");
-  }
-  return parsed;
-};
-
 const router = Router();
+
+type DecryptedTermsBody = {
+  riskBand?: number;
+  maxLoanSize?: number;
+  interestRateBps?: number;
+  ltvBps?: number;
+  riskBandSignature?: string;
+  maxLoanSizeSignature?: string;
+  interestRateSignature?: string;
+  ltvSignature?: string;
+};
+
+const normalizeTerms = (terms: DecryptedTermsBody) => {
+  const required = [
+    "riskBand",
+    "maxLoanSize",
+    "interestRateBps",
+    "ltvBps",
+    "riskBandSignature",
+    "maxLoanSizeSignature",
+    "interestRateSignature",
+    "ltvSignature",
+  ] as const;
+
+  for (const key of required) {
+    if (terms[key] === undefined) {
+      throw new Error(`terms.${key} is required`);
+    }
+  }
+
+  return {
+    riskBand: Number(terms.riskBand),
+    maxLoanSize: Number(terms.maxLoanSize),
+    interestRateBps: Number(terms.interestRateBps),
+    ltvBps: Number(terms.ltvBps),
+    riskBandSignature: String(terms.riskBandSignature),
+    maxLoanSizeSignature: String(terms.maxLoanSizeSignature),
+    interestRateSignature: String(terms.interestRateSignature),
+    ltvSignature: String(terms.ltvSignature),
+  };
+};
 
 router.post("/run", async (req, res) => {
   try {
@@ -28,12 +53,14 @@ router.post("/run", async (req, res) => {
     const underwriting = getUnderwritingEngine();
     const tx = await underwriting.runUnderwriting(borrowerAddress);
     const receipt = await tx.wait();
-    const scoreId = receipt.logs?.[0]?.topics?.[1] ?? null;
+    const metadata = await underwriting.getScoreMetadata(borrowerAddress);
 
     return res.json({
-      scoreId,
+      scoreId: metadata[1],
+      proofHash: metadata[2],
       txHash: receipt.hash,
-      computedAt: Math.floor(Date.now() / 1000),
+      computedAt: Number(metadata[0]),
+      exists: Boolean(metadata[3]),
     });
   } catch (error) {
     return res.status(500).json({
@@ -43,22 +70,48 @@ router.post("/run", async (req, res) => {
   }
 });
 
-router.get("/terms/:address", async (req, res) => {
+router.get("/handles/:address", async (req, res) => {
   try {
     const underwriting = getUnderwritingEngine();
-    const borrowerAddress = req.params.address;
-    const permission = parsePermission(req.header("permit"));
-    const terms = await underwriting.sealTermsForBorrower(borrowerAddress, permission);
-    const band = await underwriting.sealBandForLender(borrowerAddress, permission);
+    const handles = await underwriting.getScoreHandles(req.params.address);
+
     return res.json({
-      maxLoan: terms[0].toString(),
-      rateBps: terms[1].toString(),
-      ltvBps: terms[2].toString(),
-      band: Number(band),
+      riskBand: handles[0].toString(),
+      maxLoanSize: handles[1].toString(),
+      interestRateBps: handles[2].toString(),
+      ltvBps: handles[3].toString(),
+      revenueBucket: handles[4].toString(),
+      dscrAboveThreshold: handles[5].toString(),
+      leverageWithinPolicy: handles[6].toString(),
+      covenantCompliant: handles[7].toString(),
+      computedAt: Number(handles[8]),
+      scoreId: handles[9],
+      proofHash: handles[10],
+      exists: Boolean(handles[11]),
     });
   } catch (error) {
     return res.status(500).json({
-      error: "Failed to fetch underwriting terms",
+      error: "Failed to fetch score handles",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+router.post("/verify-terms/:address", async (req, res) => {
+  try {
+    const underwriting = getUnderwritingEngine();
+    const terms = normalizeTerms(req.body.terms ?? req.body);
+    const result = await underwriting.verifyDecryptedTerms(req.params.address, terms);
+
+    return res.json({
+      computedAt: Number(result[0]),
+      scoreId: result[1],
+      proofHash: result[2],
+      valid: Boolean(result[3]),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to verify underwriting terms",
       details: error instanceof Error ? error.message : String(error),
     });
   }

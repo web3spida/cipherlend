@@ -5,7 +5,11 @@ import { Ethers6Adapter } from "@cofhe/sdk/adapters";
 import { chains, type CofheChain } from "@cofhe/sdk/chains";
 import type { Permit } from "@cofhe/sdk/permits";
 
-const rpcUrl = process.env.FHENIX_RPC_URL ?? "https://api.helium.fhenix.zone";
+const rpcUrl =
+  process.env.COFHE_RPC_URL ??
+  process.env.SEPOLIA_RPC_URL ??
+  process.env.BASE_SEPOLIA_RPC_URL ??
+  "http://127.0.0.1:8545";
 const provider = new JsonRpcProvider(rpcUrl);
 const signer = process.env.PRIVATE_KEY ? new Wallet(process.env.PRIVATE_KEY, provider) : undefined;
 

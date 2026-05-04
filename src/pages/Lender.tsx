@@ -1,26 +1,24 @@
 import { useState, useEffect } from 'react';
 import { Filter, ChevronRight, Lock, CheckCircle2, ShieldAlert, Activity, X, Briefcase, LayoutGrid, ArrowUpRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAccount } from 'wagmi';
 import TopNav from '../components/TopNav';
 import RiskBand from '../components/RiskBand';
 import Footer from '../components/Footer';
+import { api, type LoanOpportunity } from '../lib/api';
 
-const LOANS = [
-  { id: 'LOAN-0047', amount: 750000, rate: 8.4, ltv: 65, term: 18, sector: 'DeFi Infrastructure', band: 'A', block: '4421847' },
-  { id: 'LOAN-0092', amount: 2500000, rate: 6.2, ltv: 50, term: 24, sector: 'Asset Management', band: 'AA', block: '4421912' },
-  { id: 'LOAN-0104', amount: 150000, rate: 12.5, ltv: 80, term: 12, sector: 'Market Making', band: 'BB', block: '4422005' },
-  { id: 'LOAN-0118', amount: 400000, rate: 10.1, ltv: 70, term: 12, sector: 'CeFi Exchange', band: 'BBB', block: '4422156' },
-];
-
-const PORTFOLIO = [
-  { id: 'LOAN-0021', amount: 50000, rate: 9.5, status: 'Active', nextPayment: 'Apr 12, 2026', accrued: 1250, band: 'A' },
-  { id: 'LOAN-0034', amount: 100000, rate: 11.2, status: 'Active', nextPayment: 'Apr 15, 2026', accrued: 3100, band: 'BBB' },
-  { id: 'LOAN-0012', amount: 25000, rate: 7.8, status: 'Completed', nextPayment: '-', accrued: 0, band: 'AA' },
-];
+const bandLabel = (band: number) => ['-', 'AA', 'A', 'BBB', 'BB', 'B', 'Rejected'][band] ?? 'Pending';
+const rateFromBps = (bps: string) => Number(bps) / 100;
+const pctFromBps = (bps: string) => Number(bps) / 100;
 
 export default function Lender() {
+  const { address } = useAccount();
   const [activeTab, setActiveTab] = useState<'marketplace' | 'portfolio'>('marketplace');
-  const [selectedLoan, setSelectedLoan] = useState<typeof LOANS[0] | null>(null);
+  const [loans, setLoans] = useState<LoanOpportunity[]>([]);
+  const [portfolio, setPortfolio] = useState<LoanOpportunity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [selectedLoan, setSelectedLoan] = useState<LoanOpportunity | null>(null);
   const [fundAmount, setFundAmount] = useState('');
   const [isFunding, setIsFunding] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
@@ -33,6 +31,35 @@ export default function Lender() {
     }
   }, [toast]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        setLoadError('');
+        const [available, owned] = await Promise.all([
+          api.getAvailableLoans(),
+          address ? api.getPortfolio(address) : Promise.resolve({ loans: [] }),
+        ]);
+        if (!cancelled) {
+          setLoans(available);
+          setPortfolio(owned.loans ?? []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load loan data');
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
   const handleFund = () => {
     if (!fundAmount || isNaN(Number(fundAmount)) || Number(fundAmount) <= 0) {
       setToast({ message: 'Please enter a valid funding amount', type: 'error' });
@@ -42,7 +69,7 @@ export default function Lender() {
     setIsFunding(true);
     setTimeout(() => {
       setIsFunding(false);
-      setToast({ message: `Successfully funded $${Number(fundAmount).toLocaleString()} to ${selectedLoan?.id}`, type: 'success' });
+      setToast({ message: `Funding submitted for loan #${selectedLoan?.loanId}`, type: 'success' });
       setFundAmount('');
       setTimeout(() => setSelectedLoan(null), 1500);
     }, 2000);
@@ -215,12 +242,20 @@ export default function Lender() {
               <div className="flex-grow space-y-6">
                 <div className="flex justify-between items-center mb-8">
                   <h2 className="font-display font-medium text-2xl text-white">Active Opportunities</h2>
-                  <span className="text-[10px] font-mono text-zinc-400 bg-white/5 px-3 py-1.5 rounded-full border border-white/10 uppercase tracking-widest">Showing {LOANS.length} loans</span>
+                  <span className="text-[10px] font-mono text-zinc-400 bg-white/5 px-3 py-1.5 rounded-full border border-white/10 uppercase tracking-widest">Showing {loans.length} loans</span>
                 </div>
 
-                {LOANS.map((loan, i) => (
+                {isLoading && <div className="text-zinc-400 font-mono text-sm">Loading live loan opportunities...</div>}
+                {loadError && <div className="text-red-400 font-mono text-sm">{loadError}</div>}
+                {!isLoading && !loadError && loans.length === 0 && (
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-zinc-400">
+                    No pending loans are available from the backend right now.
+                  </div>
+                )}
+
+                {loans.map((loan, i) => (
                   <motion.div 
-                    key={loan.id} 
+                    key={loan.loanId} 
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: i * 0.1 }}
@@ -230,25 +265,25 @@ export default function Lender() {
                       <div className="flex justify-between items-start">
                         <div>
                           <div className="flex items-center gap-4 mb-2">
-                            <h3 className="font-mono font-medium text-xl text-white group-hover:text-indigo-400 transition-colors">{loan.id}</h3>
-                            <RiskBand band={loan.band} />
+                            <h3 className="font-mono font-medium text-xl text-white group-hover:text-indigo-400 transition-colors">LOAN-{loan.loanId}</h3>
+                            <RiskBand band={bandLabel(loan.riskBand)} />
                           </div>
-                          <p className="text-sm text-zinc-400 font-light">{loan.sector}</p>
+                          <p className="text-sm text-zinc-400 font-light">{loan.borrower}</p>
                         </div>
                         <div className="text-right">
-                          <div className="font-display font-medium text-3xl text-white">${loan.amount.toLocaleString()}</div>
-                          <div className="text-sm font-mono text-emerald-400 mt-1">{loan.rate}% APR</div>
+                          <div className="font-display font-medium text-3xl text-white">${Number(loan.amount).toLocaleString()}</div>
+                          <div className="text-sm font-mono text-emerald-400 mt-1">{rateFromBps(loan.rateBps).toFixed(2)}% APR</div>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-6 py-6 border-y border-white/10">
                         <div>
                           <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">LTV</div>
-                          <div className="font-mono font-medium text-lg text-white">{loan.ltv}%</div>
+                          <div className="font-mono font-medium text-lg text-white">{pctFromBps(loan.ltvBps).toFixed(0)}%</div>
                         </div>
                         <div>
                           <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">Term</div>
-                          <div className="font-mono font-medium text-lg text-white">{loan.term} mo</div>
+                          <div className="font-mono font-medium text-lg text-white">{loan.termMonths} mo</div>
                         </div>
                         <div className="col-span-2">
                           <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">Borrower Profile</div>
@@ -261,7 +296,7 @@ export default function Lender() {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                         <div className="flex items-center gap-2.5 text-[10px] font-mono text-zinc-500 uppercase tracking-widest">
                           <CheckCircle2 className="w-4 h-4 text-indigo-400" />
-                          Score Verified On-chain (block #{loan.block})
+                          Score verified on-chain
                         </div>
                         <div className="flex gap-3">
                           <button 
@@ -324,25 +359,26 @@ export default function Lender() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {PORTFOLIO.map((loan) => (
-                      <tr key={loan.id} className="hover:bg-white/5 transition-colors group">
-                        <td className="py-5 px-6 font-mono text-sm text-zinc-300 group-hover:text-white transition-colors">{loan.id}</td>
-                        <td className="py-5 px-6 font-mono text-sm text-white">${loan.amount.toLocaleString()}</td>
-                        <td className="py-5 px-6 font-mono text-sm text-zinc-300">{loan.rate}%</td>
-                        <td className="py-5 px-6"><RiskBand band={loan.band} /></td>
-                        <td className="py-5 px-6 font-mono text-sm text-zinc-500">{loan.nextPayment}</td>
-                        <td className="py-5 px-6 font-mono text-sm text-emerald-400">${loan.accrued.toLocaleString()}</td>
+                    {portfolio.map((loan) => (
+                      <tr key={loan.loanId} className="hover:bg-white/5 transition-colors group">
+                        <td className="py-5 px-6 font-mono text-sm text-zinc-300 group-hover:text-white transition-colors">LOAN-{loan.loanId}</td>
+                        <td className="py-5 px-6 font-mono text-sm text-white">${Number(loan.amount).toLocaleString()}</td>
+                        <td className="py-5 px-6 font-mono text-sm text-zinc-300">{rateFromBps(loan.rateBps).toFixed(2)}%</td>
+                        <td className="py-5 px-6"><RiskBand band={bandLabel(loan.riskBand)} /></td>
+                        <td className="py-5 px-6 font-mono text-sm text-zinc-500">Indexed backend</td>
+                        <td className="py-5 px-6 font-mono text-sm text-emerald-400">Proof-gated</td>
                         <td className="py-5 px-6">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest border ${
-                            loan.status === 'Active' 
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                              : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
-                          }`}>
-                            {loan.status}
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest border bg-zinc-500/10 text-zinc-400 border-zinc-500/20">
+                            Live
                           </span>
                         </td>
                       </tr>
                     ))}
+                    {!isLoading && portfolio.length === 0 && (
+                      <tr>
+                        <td className="py-8 px-6 text-zinc-400" colSpan={7}>No indexed portfolio loans returned by the backend.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -370,8 +406,8 @@ export default function Lender() {
             >
               <div className="p-6 border-b border-white/10 flex justify-between items-center sticky top-0 bg-[#0A0C10]/80 backdrop-blur-xl z-10">
                 <div className="flex items-center gap-4">
-                  <h2 className="font-display font-medium text-2xl text-white">{selectedLoan.id}</h2>
-                  <RiskBand band={selectedLoan.band} />
+                  <h2 className="font-display font-medium text-2xl text-white">LOAN-{selectedLoan.loanId}</h2>
+                  <RiskBand band={bandLabel(selectedLoan.riskBand)} />
                 </div>
                 <button 
                   onClick={() => setSelectedLoan(null)}
@@ -385,11 +421,11 @@ export default function Lender() {
                 <div className="grid grid-cols-2 gap-6 p-6 rounded-2xl bg-white/5 border border-white/10">
                   <div>
                     <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">Requested Amount</div>
-                    <div className="font-display text-4xl font-medium text-white">${selectedLoan.amount.toLocaleString()}</div>
+                    <div className="font-display text-4xl font-medium text-white">${Number(selectedLoan.amount).toLocaleString()}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">Interest Rate</div>
-                    <div className="font-display text-4xl font-medium text-emerald-400">{selectedLoan.rate}% APR</div>
+                    <div className="font-display text-4xl font-medium text-emerald-400">{rateFromBps(selectedLoan.rateBps).toFixed(2)}% APR</div>
                   </div>
                 </div>
 
@@ -399,11 +435,11 @@ export default function Lender() {
                   </h3>
                   <div className="p-5 rounded-xl border border-white/10 bg-white/5 space-y-4">
                     <p className="text-sm text-zinc-400 font-light leading-relaxed">
-                      This borrower has been cryptographically verified to fall within the <strong className="text-white bg-white/10 px-2 py-0.5 rounded font-mono">{selectedLoan.band}</strong> risk band.
+                      This borrower has been cryptographically verified to fall within the <strong className="text-white bg-white/10 px-2 py-0.5 rounded font-mono">{bandLabel(selectedLoan.riskBand)}</strong> risk band.
                     </p>
                     <ul className="text-sm text-zinc-400 font-light space-y-3 ml-1">
                       <li className="flex items-center gap-3"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> DSCR &gt; 1.5x</li>
-                      <li className="flex items-center gap-3"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> LTV &lt; {selectedLoan.ltv + 5}%</li>
+                      <li className="flex items-center gap-3"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> LTV &lt; {pctFromBps(selectedLoan.ltvBps).toFixed(0)}%</li>
                       <li className="flex items-center gap-3"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> No defaults in past 36 months</li>
                     </ul>
                   </div>
@@ -420,7 +456,7 @@ export default function Lender() {
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-zinc-400 font-light">Computation Verified</span>
-                      <span className="text-[10px] font-mono text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-md border border-indigo-500/20 uppercase tracking-widest">Block #{selectedLoan.block}</span>
+                      <span className="text-[10px] font-mono text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-md border border-indigo-500/20 uppercase tracking-widest">Score handle</span>
                     </div>
                     <div className="pt-4 border-t border-white/10">
                       <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">Proof Hash</div>

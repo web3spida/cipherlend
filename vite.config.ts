@@ -15,6 +15,30 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    worker: {
+      format: 'es',
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('@cofhe') || id.includes('tfhe')) {
+              return 'cofhe';
+            }
+            if (
+              id.includes('@rainbow-me') ||
+              id.includes('@walletconnect') ||
+              id.includes('@reown') ||
+              id.includes('@coinbase') ||
+              id.includes('wagmi') ||
+              id.includes('viem')
+            ) {
+              return 'wallet';
+            }
+          },
+        },
+      },
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

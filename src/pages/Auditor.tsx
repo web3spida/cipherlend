@@ -1,23 +1,36 @@
 import { useState } from 'react';
 import { Search, ShieldCheck, Lock, Download, CheckCircle2, FileText, Activity, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAccount } from 'wagmi';
 import TopNav from '../components/TopNav';
 import RiskBand from '../components/RiskBand';
 import Footer from '../components/Footer';
+import { api } from '../lib/api';
 
 export default function Auditor() {
+  const { address } = useAccount();
   const [loanId, setLoanId] = useState('');
   const [permit, setPermit] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [error, setError] = useState('');
+  const [report, setReport] = useState<Awaited<ReturnType<typeof api.verifyAudit>> | null>(null);
 
-  const handleVerify = () => {
-    if (!loanId || !permit) return;
-    setIsVerifying(true);
-    setTimeout(() => {
-      setIsVerifying(false);
+  const handleVerify = async () => {
+    if (!loanId || !permit || !address) return;
+    try {
+      setIsVerifying(true);
+      setError('');
+      const result = await api.verifyAudit({ loanId, permitId: permit, auditorAddress: address });
+      setReport(result);
       setVerified(true);
-    }, 2500);
+    } catch (err) {
+      setReport(null);
+      setVerified(false);
+      setError(err instanceof Error ? err.message : 'Verification failed');
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   return (
@@ -82,7 +95,7 @@ export default function Auditor() {
 
                 <button 
                   onClick={handleVerify}
-                  disabled={isVerifying || !loanId || !permit}
+                  disabled={isVerifying || !loanId || !permit || !address}
                   className="w-full py-3.5 rounded-xl bg-white text-black hover:bg-zinc-200 font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-6 shadow-lg"
                 >
                   {isVerifying ? (
@@ -91,6 +104,7 @@ export default function Auditor() {
                     <><ShieldCheck className="w-5 h-5" /> Verify Compliance</>
                   )}
                 </button>
+                {error && <div className="text-sm text-red-400 font-mono">{error}</div>}
               </div>
             </div>
 
@@ -153,7 +167,7 @@ export default function Auditor() {
                     </div>
                     <div className="text-right">
                       <div className="font-mono text-sm font-medium text-white">{loanId}</div>
-                      <div className="text-[10px] font-mono text-zinc-500 mt-1 uppercase tracking-widest">Verified: {new Date().toLocaleString()}</div>
+                      <div className="text-[10px] font-mono text-zinc-500 mt-1 uppercase tracking-widest">Verified: {report ? new Date(report.computedAt * 1000).toLocaleString() : new Date().toLocaleString()}</div>
                     </div>
                   </div>
 
@@ -168,7 +182,7 @@ export default function Auditor() {
                         <CheckCircle2 className="w-4 h-4" /> Underwriting model executed correctly
                       </div>
                       <div className="flex items-center gap-3 text-sm font-mono text-emerald-400">
-                        <CheckCircle2 className="w-4 h-4" /> Risk band computation verified
+                        <CheckCircle2 className="w-4 h-4" /> Score handle exists: {report?.exists ? 'yes' : 'no'}
                       </div>
                       <div className="flex items-center gap-3 text-sm font-mono text-emerald-400">
                         <CheckCircle2 className="w-4 h-4" /> No manual override detected
@@ -183,25 +197,25 @@ export default function Auditor() {
                     >
                       <div className="space-y-1.5">
                         <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Risk Band</div>
-                        <div className="font-mono font-medium"><RiskBand band="A" /></div>
+                        <div className="font-mono font-medium"><RiskBand band="Proof-gated" /></div>
                       </div>
                       <div className="space-y-1.5">
                         <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Revenue Bucket</div>
-                        <div className="font-mono font-medium text-white">$1M – $5M <span className="text-zinc-500 text-[10px] font-normal ml-1">(not exact)</span></div>
+                        <div className="font-mono font-medium text-white">{report?.handles.revenueBucket?.slice(0, 12) ?? 'Handle'} <span className="text-zinc-500 text-[10px] font-normal ml-1">(ciphertext)</span></div>
                       </div>
                       <div className="space-y-1.5">
                         <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">DSCR Above 1.2x</div>
                         <div className="font-mono font-medium text-emerald-400 flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Yes
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Authorized handle returned
                         </div>
                       </div>
                       <div className="space-y-1.5">
                         <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Leverage Ratio</div>
-                        <div className="font-mono font-medium text-white">Within policy</div>
+                        <div className="font-mono font-medium text-white">Permit-gated</div>
                       </div>
                       <div className="space-y-1.5 col-span-2">
                         <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Covenant Status</div>
-                        <div className="font-mono font-medium text-emerald-400">Compliant</div>
+                        <div className="font-mono font-medium text-emerald-400">Requires off-chain decryptForView</div>
                       </div>
                     </motion.div>
 
@@ -221,7 +235,7 @@ export default function Auditor() {
                       <div className="space-y-2">
                         <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest ml-1">Computation Proof Hash</div>
                         <div className="p-4 rounded-xl bg-black/40 border border-white/10 font-mono text-sm text-zinc-500 break-all flex justify-between items-start gap-4 hover:border-white/20 transition-colors shadow-inner">
-                          <span className="leading-relaxed">0x7f3a9b2c1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a</span>
+                          <span className="leading-relaxed">{report?.proofHash ?? 'No proof hash returned'}</span>
                           <a href="#" className="text-indigo-400 hover:text-white whitespace-nowrap text-xs flex items-center gap-1 transition-colors mt-1">
                             View Explorer <ChevronRight className="w-3 h-3" />
                           </a>

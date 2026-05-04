@@ -59,6 +59,57 @@ router.post("/fund", async (req, res) => {
   }
 });
 
+router.post("/request", async (req, res) => {
+  try {
+    const { requestedAmount, termMonths, terms } = req.body as {
+      requestedAmount?: string;
+      termMonths?: number;
+      terms?: {
+        riskBand: number;
+        maxLoanSize: number;
+        interestRateBps: number;
+        ltvBps: number;
+        riskBandSignature: string;
+        maxLoanSizeSignature: string;
+        interestRateSignature: string;
+        ltvSignature: string;
+      };
+    };
+
+    if (!requestedAmount || !termMonths || !terms) {
+      return res.status(400).json({ error: "requestedAmount, termMonths and terms are required" });
+    }
+
+    const loanVault = getLoanVault();
+    const tx = await loanVault.requestLoan(BigInt(requestedAmount), Number(termMonths), terms);
+    const receipt = await tx.wait();
+
+    return res.json({
+      txHash: receipt.hash,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to request loan",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+router.get("/portfolio/:address", async (req, res) => {
+  try {
+    return res.json({
+      address: req.params.address,
+      loans: [],
+      note: "LoanVault exposes pending loans on-chain. Portfolio indexing should be backed by events or a subgraph before production.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to fetch portfolio",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 router.post("/payment", async (req, res) => {
   try {
     const { loanId, amount } = req.body as { loanId?: number; amount?: string };

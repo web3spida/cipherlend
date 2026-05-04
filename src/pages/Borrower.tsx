@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle2, Lock, Shield, ChevronRight, Activity, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import TopNav from '../components/TopNav';
 import Footer from '../components/Footer';
 import CipherField from '../components/CipherField';
 import RiskBand from '../components/RiskBand';
+import { api } from '../lib/api';
+import { encryptFinancialInputs, type EncryptedFinancialInputs } from '../lib/cofheClient';
+import { borrowerRegistryAbi, contractAddresses } from '../lib/contracts';
 
 const STEPS = [
   { id: 1, title: 'Financial Profile' },
@@ -14,10 +18,16 @@ const STEPS = [
 ];
 
 export default function Borrower() {
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
   const [currentStep, setCurrentStep] = useState(1);
   const [isEncrypted, setIsEncrypted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState('');
+  const [encryptedInputs, setEncryptedInputs] = useState<EncryptedFinancialInputs | null>(null);
+  const [profileTxHash, setProfileTxHash] = useState('');
+  const [scoreTxHash, setScoreTxHash] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   const [formData, setFormData] = useState({
@@ -37,29 +47,87 @@ export default function Borrower() {
     }
   }, [toast]);
 
-  const handleEncrypt = () => {
-    setIsEncrypted(true);
-    setTimeout(() => {
-      setToast({ message: 'Fields encrypted successfully', type: 'success' });
-    }, 1000);
+  const sectorToId = (sector: string) => {
+    const sectors = ['DeFi Protocol', 'CeFi Exchange', 'Infrastructure', 'Market Making', 'Asset Management', 'Other'];
+    return Math.max(0, sectors.indexOf(sector));
   };
 
-  const handleSubmit = () => {
-    setIsSubmitting(true);
-    setSubmitStatus('Encrypting...');
-    
-    setTimeout(() => {
-      setSubmitStatus('Submitting to Fhenix...');
-      setToast({ message: 'Profile submitted to Fhenix', type: 'info' });
-      setTimeout(() => {
-        setSubmitStatus('Running Underwriting Model...');
-        setTimeout(() => {
-          setSubmitStatus('Score Ready');
-          setIsSubmitting(false);
-          setCurrentStep(3);
-        }, 2000);
-      }, 2000);
-    }, 1500);
+  const handleEncrypt = async () => {
+    try {
+      if (!walletClient || !publicClient) {
+        throw new Error('Connect a wallet before encrypting.');
+      }
+
+      setIsSubmitting(true);
+      setSubmitStatus('Preparing CoFHE client...');
+      const encrypted = await encryptFinancialInputs(
+        {
+          revenue: formData.arr,
+          debt: formData.debt,
+          burnRate: formData.burn,
+          receivables: formData.ar,
+          cash: formData.cash,
+          businessAge: formData.age,
+        },
+        walletClient,
+        publicClient,
+        (step) => setSubmitStatus(step)
+      );
+
+      setEncryptedInputs(encrypted);
+      setIsEncrypted(true);
+      setToast({ message: 'Fields encrypted in your wallet session', type: 'success' });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : 'Encryption failed', type: 'error' });
+    } finally {
+      setIsSubmitting(false);
+      setSubmitStatus('');
+    }
+  };
+
+  const handleSubmit = async () => {
+    try {
+      if (!address || !walletClient || !publicClient) {
+        throw new Error('Connect a wallet before submitting.');
+      }
+      if (!encryptedInputs) {
+        throw new Error('Encrypt the profile before submitting.');
+      }
+
+      setIsSubmitting(true);
+      setSubmitStatus('Submitting encrypted profile...');
+      const hash = await walletClient.writeContract({
+        chain: undefined,
+        account: address,
+        address: contractAddresses.borrowerRegistry,
+        abi: borrowerRegistryAbi,
+        functionName: 'submitProfile',
+        args: [
+          encryptedInputs.revenue,
+          encryptedInputs.debt,
+          encryptedInputs.burnRate,
+          encryptedInputs.receivables,
+          encryptedInputs.cash,
+          encryptedInputs.businessAge,
+          sectorToId(formData.sector),
+        ] as any,
+      });
+      setProfileTxHash(hash);
+      await publicClient.waitForTransactionReceipt({ hash });
+
+      setSubmitStatus('Running underwriting...');
+      const underwriting = await api.runUnderwriting(address);
+      setScoreTxHash(underwriting.txHash);
+
+      setSubmitStatus('Score ready');
+      setToast({ message: 'Profile scored with CoFHE proofs', type: 'success' });
+      setCurrentStep(3);
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : 'Submission failed', type: 'error' });
+    } finally {
+      setIsSubmitting(false);
+      setSubmitStatus('');
+    }
   };
 
   const pageVariants = {
@@ -236,7 +304,8 @@ export default function Borrower() {
                 <div className="pt-8 border-t border-white/10 flex flex-col items-center">
                   <button
                     onClick={isEncrypted ? () => setCurrentStep(2) : handleEncrypt}
-                    className={`w-full md:w-auto px-8 py-3.5 rounded-lg font-medium flex items-center justify-center gap-2 transition-all duration-300 ${
+                    disabled={isSubmitting}
+                    className={`w-full md:w-auto px-8 py-3.5 rounded-lg font-medium flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
                       isEncrypted 
                         ? 'bg-white text-black hover:bg-zinc-200' 
                         : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
@@ -244,6 +313,8 @@ export default function Borrower() {
                   >
                     {isEncrypted ? (
                       <>Proceed to Submission <ChevronRight className="w-4 h-4" /></>
+                    ) : isSubmitting ? (
+                      <><Activity className="w-4 h-4 animate-spin" /> {submitStatus || 'Encrypting...'}</>
                     ) : (
                       <><Lock className="w-4 h-4" /> Encrypt All Fields</>
                     )}
@@ -278,7 +349,7 @@ export default function Borrower() {
                     <span className="uppercase tracking-widest text-xs">Encrypted Payload</span>
                   </div>
                   <div className="leading-relaxed opacity-70">
-                    0x{Array.from({length: 256}, () => Math.floor(Math.random() * 16).toString(16)).join('')}
+                    {encryptedInputs ? JSON.stringify(encryptedInputs, (_, value) => typeof value === 'bigint' ? value.toString() : value).slice(0, 420) : 'No encrypted payload generated'}
                   </div>
                 </div>
 
@@ -337,29 +408,30 @@ export default function Borrower() {
                   <div className="p-6 space-y-1 divide-y divide-white/5">
                     <div className="flex justify-between items-center py-4">
                       <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Risk Band</span>
-                      <RiskBand band="A" />
+                      <RiskBand band={scoreTxHash ? "A" : "Pending"} />
                     </div>
                     <div className="flex justify-between items-center py-4">
                       <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Max Loan Size</span>
-                      <span className="font-mono text-sm text-white">$850,000</span>
+                      <span className="font-mono text-sm text-white">Decrypt with CoFHE permit</span>
                     </div>
                     <div className="flex justify-between items-center py-4">
                       <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Interest Rate</span>
-                      <span className="font-mono text-sm text-white">8.4% APR</span>
+                      <span className="font-mono text-sm text-white">Proof-gated</span>
                     </div>
                     <div className="flex justify-between items-center py-4">
                       <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">LTV Ratio</span>
-                      <span className="font-mono text-sm text-white">65%</span>
+                      <span className="font-mono text-sm text-white">Proof-gated</span>
                     </div>
                     <div className="flex justify-between items-center py-4">
                       <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Covenant Trigger</span>
-                      <span className="font-mono text-sm text-white">DSCR &lt; 1.2x</span>
+                      <span className="font-mono text-sm text-white">Verified by score handles</span>
                     </div>
                   </div>
                   <div className="bg-white/5 border-t border-white/10 px-6 py-4 flex items-start gap-3">
                     <Lock className="w-4 h-4 text-zinc-400 mt-0.5 shrink-0" />
                     <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 leading-relaxed">
                       Raw financials never left your device in unencrypted form. Computation was verified via FHE.
+                      {profileTxHash && ` Profile tx: ${profileTxHash.slice(0, 10)}...`}
                     </p>
                   </div>
                 </div>

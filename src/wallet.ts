@@ -1,27 +1,6 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { defineChain } from 'viem';
-
-const fhenixHelium = defineChain({
-  id: 8008135,
-  name: 'Fhenix Helium',
-  nativeCurrency: {
-    name: 'tFHE',
-    symbol: 'tFHE',
-    decimals: 18,
-  },
-  rpcUrls: {
-    default: {
-      http: ['https://api.helium.fhenix.zone'],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: 'Fhenix Helium Explorer',
-      url: 'https://explorer.helium.fhenix.zone',
-    },
-  },
-  testnet: true,
-});
+import { arbitrumSepolia, baseSepolia, sepolia } from 'viem/chains';
 
 const hardhatLocal = defineChain({
   id: 31337,
@@ -45,13 +24,11 @@ const hardhatLocal = defineChain({
   testnet: true,
 });
 
-const projectId =
-  (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_WALLETCONNECT_PROJECT_ID ??
-  'WALLETCONNECT_PROJECT_ID';
+const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? 'WALLETCONNECT_PROJECT_ID';
 
 export const wagmiConfig = getDefaultConfig({
   appName: 'CipherLend',
   projectId,
-  chains: [fhenixHelium, hardhatLocal],
+  chains: [sepolia, arbitrumSepolia, baseSepolia, hardhatLocal],
   ssr: false,
 });

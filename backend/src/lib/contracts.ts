@@ -2,23 +2,27 @@ import { Contract } from "ethers";
 import { getProvider, getSigner } from "./fhenix";
 
 const borrowerRegistryAbi = [
-  "function submitProfile(uint256,uint256,uint256,uint256,uint256,uint32,uint8)",
+  "function submitProfile((uint256,uint8,uint8,bytes),(uint256,uint8,uint8,bytes),(uint256,uint8,uint8,bytes),(uint256,uint8,uint8,bytes),(uint256,uint8,uint8,bytes),(uint256,uint8,uint8,bytes),uint8)",
   "function getProfileMetadata(address) view returns (uint8,uint256,uint256,bool)",
+  "function getProfileHandles(address) view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool)",
+  "function authorizeProfileAccess(address)",
 ];
 
 const underwritingAbi = [
   "function runUnderwriting(address) returns (bytes32)",
-  "function sealTermsForBorrower(address,(bytes32,bytes)) view returns (uint256,uint256,uint256)",
-  "function sealBandForLender(address,(bytes32,bytes)) view returns (uint8)",
-  "function sealAuditView(address,(bytes32,bytes)) view returns (uint8,string,bool,bool,bool)",
-  "function creditScores(address) view returns (uint256,uint256,uint256,uint256,uint256,bytes32,bool)",
+  "function getScoreHandles(address) view returns (uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,bytes32,bytes32,bool)",
+  "function getScoreMetadata(address) view returns (uint256,bytes32,bytes32,bool)",
+  "function verifyDecryptedTerms(address,(uint8,uint32,uint32,uint32,bytes,bytes,bytes,bytes)) view returns (uint256,bytes32,bytes32,bool)",
+  "function authorizeScoreAccess(address,address)",
 ];
 
 const loanVaultAbi = [
   "function getPendingLoans() view returns ((uint256 loanId,address borrower,uint256 principal,uint256 interestRateBps,uint256 ltvBps,uint8 riskBand,uint256 termMonths,bytes32 underwritingScoreId)[])",
+  "function requestLoan(uint256,uint256,(uint8,uint32,uint32,uint32,bytes,bytes,bytes,bytes))",
   "function fundLoan(uint256) payable",
   "function makePayment(uint256) payable",
   "function loans(uint256) view returns (address,address,uint256,uint256,uint256,uint8,uint256,uint256,uint256,uint256,uint8,bytes32)",
+  "function getLoanDetails(uint256) view returns (tuple(address borrower,address lender,uint256 principal,uint256 interestRateBps,uint256 ltvBps,uint8 riskBand,uint256 issuedAt,uint256 termMonths,uint256 nextPaymentDue,uint256 remainingBalance,uint8 status,bytes32 underwritingScoreId))",
 ];
 
 const permitRegistryAbi = [
