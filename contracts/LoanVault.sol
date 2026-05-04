@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.25;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -62,34 +62,34 @@ contract LoanVault is Ownable, ReentrancyGuard {
         underwritingEngine = UnderwritingEngine(underwritingEngineAddress);
     }
 
-    function requestLoan(uint256 requestedAmount, uint256 termMonths) external {
+    function requestLoan(
+        uint256 requestedAmount,
+        uint256 termMonths,
+        UnderwritingEngine.DecryptedTerms calldata terms
+    ) external {
         require(requestedAmount > 0, "INVALID_AMOUNT");
         require(termMonths > 0 && termMonths <= 60, "INVALID_TERM");
 
         (
-            uint8 band,
-            uint256 maxLoanSize,
-            uint256 rateBps,
-            uint256 ltvBps,
             uint256 computedAt,
             bytes32 scoreId,
             ,
-            bool exists
-        ) = underwritingEngine.getLatestScoreForVault(msg.sender);
+            bool valid
+        ) = underwritingEngine.verifyDecryptedTerms(msg.sender, terms);
 
-        require(exists, "MISSING_SCORE");
+        require(valid, "INVALID_SCORE_PROOF");
         require(block.timestamp - computedAt <= SCORE_VALIDITY, "SCORE_EXPIRED");
-        require(band != 6, "BORROWER_REJECTED");
-        require(requestedAmount <= maxLoanSize, "EXCEEDS_MAX_LOAN");
+        require(terms.riskBand != 6, "BORROWER_REJECTED");
+        require(requestedAmount <= terms.maxLoanSize, "EXCEEDS_MAX_LOAN");
 
         loanCounter += 1;
         loans[loanCounter] = Loan({
             borrower: msg.sender,
             lender: address(0),
             principal: requestedAmount,
-            interestRateBps: rateBps,
-            ltvBps: ltvBps,
-            riskBand: band,
+            interestRateBps: terms.interestRateBps,
+            ltvBps: terms.ltvBps,
+            riskBand: terms.riskBand,
             issuedAt: 0,
             termMonths: termMonths,
             nextPaymentDue: 0,
@@ -149,7 +149,7 @@ contract LoanVault is Ownable, ReentrancyGuard {
         loan.nextPaymentDue = block.timestamp + PAYMENT_INTERVAL;
     }
 
-    function checkCovenants(uint256 loanId) external {
+    function refreshCovenants(uint256 loanId) external {
         Loan storage loan = loans[loanId];
         require(loan.borrower != address(0), "LOAN_NOT_FOUND");
         require(
@@ -158,12 +158,22 @@ contract LoanVault is Ownable, ReentrancyGuard {
         );
 
         underwritingEngine.runUnderwriting(loan.borrower);
-        (uint8 newBand, , , , , , , bool exists) = underwritingEngine.getLatestScoreForVault(loan.borrower);
-        require(exists, "UNDERWRITING_FAILED");
+    }
 
-        if (newBand > loan.riskBand) {
-            emit CovenantBreach(loanId, newBand);
-            if (newBand == 6) {
+    function checkCovenants(uint256 loanId, UnderwritingEngine.DecryptedTerms calldata terms) external {
+        Loan storage loan = loans[loanId];
+        require(loan.borrower != address(0), "LOAN_NOT_FOUND");
+        require(
+            loan.status == LoanStatus.Active || loan.status == LoanStatus.Overdue,
+            "COVENANT_CHECK_NOT_ALLOWED"
+        );
+
+        (, , , bool valid) = underwritingEngine.verifyDecryptedTerms(loan.borrower, terms);
+        require(valid, "INVALID_SCORE_PROOF");
+
+        if (terms.riskBand > loan.riskBand) {
+            emit CovenantBreach(loanId, terms.riskBand);
+            if (terms.riskBand == 6) {
                 loan.status = LoanStatus.Defaulted;
             }
         }

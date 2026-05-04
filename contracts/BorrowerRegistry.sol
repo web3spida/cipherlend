@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.25;
 
-import {FHE, ebool, euint8, euint32} from "@fhenixprotocol/contracts/FHE.sol";
-import {Permission, Permissioned} from "@fhenixprotocol/contracts/access/Permissioned.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {FHE, InEuint32, euint32} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
-contract BorrowerRegistry is Permissioned {
+contract BorrowerRegistry is Ownable {
     struct BorrowerProfile {
         euint32 annualRevenue;
         euint32 totalDebt;
@@ -22,16 +22,30 @@ contract BorrowerRegistry is Permissioned {
     mapping(address => uint256) public profileTimestamp;
     mapping(address => bool) public hasProfile;
 
+    address public underwritingEngine;
+
     event ProfileSubmitted(address indexed borrower, uint256 version);
     event ProfileUpdated(address indexed borrower, uint256 version);
+    event UnderwritingEngineSet(address indexed underwritingEngine);
+    event ProfileAccessGranted(address indexed borrower, address indexed account);
+
+    error OnlyUnderwritingEngine();
+    error ProfileNotFound();
+
+    constructor() Ownable(msg.sender) {}
+
+    function setUnderwritingEngine(address underwritingEngineAddress) external onlyOwner {
+        underwritingEngine = underwritingEngineAddress;
+        emit UnderwritingEngineSet(underwritingEngineAddress);
+    }
 
     function submitProfile(
-        uint256 revenue,
-        uint256 debt,
-        uint256 burnRate,
-        uint256 receivables,
-        uint256 cash,
-        uint32 businessAge,
+        InEuint32 memory revenue,
+        InEuint32 memory debt,
+        InEuint32 memory burnRate,
+        InEuint32 memory receivables,
+        InEuint32 memory cash,
+        InEuint32 memory businessAge,
         uint8 sector
     ) external {
         require(!hasProfile[msg.sender], "PROFILE_EXISTS");
@@ -40,18 +54,24 @@ contract BorrowerRegistry is Permissioned {
     }
 
     function updateProfile(
-        uint256 revenue,
-        uint256 debt,
-        uint256 burnRate,
-        uint256 receivables,
-        uint256 cash,
-        uint32 businessAge,
+        InEuint32 memory revenue,
+        InEuint32 memory debt,
+        InEuint32 memory burnRate,
+        InEuint32 memory receivables,
+        InEuint32 memory cash,
+        InEuint32 memory businessAge,
         uint8 sector
     ) external {
         require(hasProfile[msg.sender], "PROFILE_NOT_FOUND");
         uint256 nextVersion = profiles[msg.sender].version + 1;
         _upsertProfile(msg.sender, revenue, debt, burnRate, receivables, cash, businessAge, sector, nextVersion);
         emit ProfileUpdated(msg.sender, nextVersion);
+    }
+
+    function authorizeProfileAccess(address account) external {
+        if (!hasProfile[msg.sender]) revert ProfileNotFound();
+        _allowProfile(profiles[msg.sender], account);
+        emit ProfileAccessGranted(msg.sender, account);
     }
 
     function getProfileMetadata(address borrower)
@@ -63,56 +83,58 @@ contract BorrowerRegistry is Permissioned {
         return (profile.industrySector, profile.submittedAt, profile.version, hasProfile[borrower]);
     }
 
-    function getEncryptedProfile(address borrower) external view returns (BorrowerProfile memory profile, bool exists) {
-        profile = profiles[borrower];
+    function getEncryptedProfile(address borrower) external returns (BorrowerProfile memory profile, bool exists) {
+        if (msg.sender != underwritingEngine) revert OnlyUnderwritingEngine();
+        BorrowerProfile storage storedProfile = profiles[borrower];
+        profile = storedProfile;
         exists = hasProfile[borrower];
+        if (exists) {
+            _allowProfileTransient(storedProfile, msg.sender);
+        }
     }
 
-    function sealRevenueBucket(address borrower, Permission calldata permission)
+    function getProfileHandles(address borrower)
         external
         view
-        onlyPermitted(permission, borrower)
-        returns (string memory bucket)
+        returns (
+            uint256 annualRevenue,
+            uint256 totalDebt,
+            uint256 monthlyBurnRate,
+            uint256 accountsReceivable,
+            uint256 cashOnHand,
+            uint256 businessAgeMonths,
+            bool exists
+        )
     {
-        require(hasProfile[borrower], "PROFILE_NOT_FOUND");
         BorrowerProfile storage profile = profiles[borrower];
-
-        // Revenue remains encrypted at all times and we only decrypt a low-entropy bucket index.
-        euint32 revenue = profile.annualRevenue;
-        euint8 bucketIndex = FHE.asEuint8(1);
-        ebool atLeastOneMillion = revenue.gte(FHE.asEuint32(1_000_000));
-        ebool atLeastFiveMillion = revenue.gte(FHE.asEuint32(5_000_000));
-        ebool atLeastTwentyMillion = revenue.gte(FHE.asEuint32(20_000_000));
-
-        // We use FHE.select rather than if/else so conditional branching is executed on ciphertext, not plaintext.
-        bucketIndex = FHE.select(atLeastOneMillion, FHE.asEuint8(2), bucketIndex);
-        bucketIndex = FHE.select(atLeastFiveMillion, FHE.asEuint8(3), bucketIndex);
-        bucketIndex = FHE.select(atLeastTwentyMillion, FHE.asEuint8(4), bucketIndex);
-
-        uint8 idx = FHE.decrypt(bucketIndex);
-        if (idx == 1) return "<$1M";
-        if (idx == 2) return "$1M-$5M";
-        if (idx == 3) return "$5M-$20M";
-        return ">$20M";
+        return (
+            uint256(euint32.unwrap(profile.annualRevenue)),
+            uint256(euint32.unwrap(profile.totalDebt)),
+            uint256(euint32.unwrap(profile.monthlyBurnRate)),
+            uint256(euint32.unwrap(profile.accountsReceivable)),
+            uint256(euint32.unwrap(profile.cashOnHand)),
+            uint256(euint32.unwrap(profile.businessAgeMonths)),
+            hasProfile[borrower]
+        );
     }
 
     function _upsertProfile(
         address borrower,
-        uint256 revenue,
-        uint256 debt,
-        uint256 burnRate,
-        uint256 receivables,
-        uint256 cash,
-        uint32 businessAge,
+        InEuint32 memory revenue,
+        InEuint32 memory debt,
+        InEuint32 memory burnRate,
+        InEuint32 memory receivables,
+        InEuint32 memory cash,
+        InEuint32 memory businessAge,
         uint8 sector,
         uint256 version
     ) internal {
         profiles[borrower] = BorrowerProfile({
-            annualRevenue: FHE.asEuint32(uint32(revenue)),
-            totalDebt: FHE.asEuint32(uint32(debt)),
-            monthlyBurnRate: FHE.asEuint32(uint32(burnRate)),
-            accountsReceivable: FHE.asEuint32(uint32(receivables)),
-            cashOnHand: FHE.asEuint32(uint32(cash)),
+            annualRevenue: FHE.asEuint32(revenue),
+            totalDebt: FHE.asEuint32(debt),
+            monthlyBurnRate: FHE.asEuint32(burnRate),
+            accountsReceivable: FHE.asEuint32(receivables),
+            cashOnHand: FHE.asEuint32(cash),
             businessAgeMonths: FHE.asEuint32(businessAge),
             industrySector: sector,
             borrower: borrower,
@@ -121,5 +143,36 @@ contract BorrowerRegistry is Permissioned {
         });
         profileTimestamp[borrower] = block.timestamp;
         hasProfile[borrower] = true;
+
+        _allowProfile(profiles[borrower], address(this));
+        _allowProfile(profiles[borrower], borrower);
+        if (underwritingEngine != address(0)) {
+            _allowProfile(profiles[borrower], underwritingEngine);
+        }
+    }
+
+    function _allowProfile(BorrowerProfile storage profile, address account) internal {
+        FHE.allowThis(profile.annualRevenue);
+        FHE.allowThis(profile.totalDebt);
+        FHE.allowThis(profile.monthlyBurnRate);
+        FHE.allowThis(profile.accountsReceivable);
+        FHE.allowThis(profile.cashOnHand);
+        FHE.allowThis(profile.businessAgeMonths);
+
+        FHE.allow(profile.annualRevenue, account);
+        FHE.allow(profile.totalDebt, account);
+        FHE.allow(profile.monthlyBurnRate, account);
+        FHE.allow(profile.accountsReceivable, account);
+        FHE.allow(profile.cashOnHand, account);
+        FHE.allow(profile.businessAgeMonths, account);
+    }
+
+    function _allowProfileTransient(BorrowerProfile storage profile, address account) internal {
+        FHE.allowTransient(profile.annualRevenue, account);
+        FHE.allowTransient(profile.totalDebt, account);
+        FHE.allowTransient(profile.monthlyBurnRate, account);
+        FHE.allowTransient(profile.accountsReceivable, account);
+        FHE.allowTransient(profile.cashOnHand, account);
+        FHE.allowTransient(profile.businessAgeMonths, account);
     }
 }

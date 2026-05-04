@@ -1,14 +1,13 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
-import "fhenix-hardhat-plugin";
-import "fhenix-hardhat-network";
+import "@cofhe/hardhat-plugin";
 import * as dotenv from "dotenv";
 
 dotenv.config();
 
 const config: any = {
   solidity: {
-    version: "0.8.24",
+    version: "0.8.25",
     settings: {
       viaIR: true,
       optimizer: {
@@ -23,9 +22,14 @@ const config: any = {
         enabled: true,
       },
     },
-    fhenixHelium: {
-      url: process.env.FHENIX_RPC_URL || "https://api.helium.fhenix.zone",
-      chainId: 8008135,
+    sepolia: {
+      url: process.env.SEPOLIA_RPC_URL || "",
+      chainId: 11155111,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    arbitrumSepolia: {
+      url: process.env.ARBITRUM_SEPOLIA_RPC_URL || "https://sepolia-rollup.arbitrum.io/rpc",
+      chainId: 421614,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
     baseSepolia: {
@@ -36,6 +40,11 @@ const config: any = {
       chainId: 84532,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
+  },
+  cofhe: {
+    logMocks: false,
+    gasWarning: true,
+    mocksDeployVerbosity: "v",
   },
   etherscan: {
     apiKey: {

@@ -23,6 +23,8 @@ async function main() {
 
   const tx = await underwritingEngine.setLoanVault(await loanVault.getAddress());
   await tx.wait();
+  const registryTx = await borrowerRegistry.setUnderwritingEngine(await underwritingEngine.getAddress());
+  await registryTx.wait();
 
   const deployed = {
     borrowerRegistry: await borrowerRegistry.getAddress(),
@@ -36,7 +38,7 @@ async function main() {
   console.log("LoanVault:", deployed.loanVault);
   console.log("PermitRegistry:", deployed.permitRegistry);
 
-  if (network.name === "fhenixHelium" || network.name === "baseSepolia") {
+  if (network.name === "sepolia" || network.name === "arbitrumSepolia" || network.name === "baseSepolia") {
     await verifyContract(deployed.borrowerRegistry, []);
     await verifyContract(deployed.underwritingEngine, [deployed.borrowerRegistry]);
     await verifyContract(deployed.loanVault, [deployed.underwritingEngine]);
