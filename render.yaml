@@ -1,0 +1,66 @@
+services:
+  - type: web
+    name: cipherlend-api
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    buildCommand: npm ci && npm run build:backend
+    startCommand: npm run start:backend
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20.11.1
+      - key: JSON_BODY_LIMIT
+        value: 2mb
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: RATE_LIMIT_MAX
+        value: "120"
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: COFHE_CHAIN_NAME
+        sync: false
+      - key: COFHE_RPC_URL
+        sync: false
+      - key: PRIVATE_KEY
+        sync: false
+      - key: BORROWER_REGISTRY_ADDRESS
+        sync: false
+      - key: UNDERWRITING_ENGINE_ADDRESS
+        sync: false
+      - key: LOAN_VAULT_ADDRESS
+        sync: false
+      - key: PERMIT_REGISTRY_ADDRESS
+        sync: false
+
+  - type: web
+    name: cipherlend-web
+    runtime: static
+    plan: starter
+    branch: main
+    buildCommand: npm ci && npm run build:web
+    staticPublishPath: dist
+    autoDeployTrigger: commit
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.1
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_WALLETCONNECT_PROJECT_ID
+        sync: false
+      - key: VITE_COFHE_CHAIN_NAME
+        sync: false
+      - key: VITE_BORROWER_REGISTRY_ADDRESS
+        sync: false
+      - key: VITE_UNDERWRITING_ENGINE_ADDRESS
+        sync: false
+      - key: VITE_LOAN_VAULT_ADDRESS
+        sync: false
