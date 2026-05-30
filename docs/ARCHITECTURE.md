@@ -15,12 +15,14 @@ flowchart LR
   API --> RPC["CoFHE RPC"]
   API --> Contracts["CipherLend contracts"]
   API --> CofheNode["@cofhe/sdk/node"]
+  API --> Reineira["@reineira-os/sdk optional"]
 
   CofheWeb --> RPC
   Contracts --> Registry["BorrowerRegistry"]
   Contracts --> Underwriting["UnderwritingEngine"]
   Contracts --> Vault["LoanVault"]
   Contracts --> Permits["PermitRegistry"]
+  Reineira --> Privara["Reineira / Privara escrow, insurance, CCTP"]
 ```
 
 ## Encrypted Borrower Profile Flow
@@ -94,6 +96,7 @@ flowchart TB
 - `UnderwritingEngine` computes encrypted scores and terms and verifies CoFHE decrypt-for-transaction proofs.
 - `LoanVault` owns loan request, funding, payment, overdue, and covenant lifecycle.
 - `PermitRegistry` tracks business-level data grants. It does not replace CoFHE SDK permits.
+- Reineira integration is an optional API boundary for settlement-side escrow and insurance workflows. It is disabled unless `REINEIRA_ENABLED=true`.
 
 ## Production Trust Boundaries
 

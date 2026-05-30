@@ -13,7 +13,11 @@
 - Security headers through `helmet`.
 - API rate limiting through `express-rate-limit`.
 - Request IDs returned through `x-request-id`.
+- In-process `/metrics` endpoint for request counts, errors, and average latency.
 - Vite build output configured for static hosting.
+- Event-backed portfolio reads through `LoanVault.getBorrowerLoanIds` and `LoanVault.getLenderLoanIds`.
+- Auditor PDF report generation.
+- Optional Reineira SDK API boundary for status, balances, and plain escrow creation.
 - Architecture and deployment diagrams in `docs/ARCHITECTURE.md`.
 
 ## Required Before Real Funds
@@ -63,17 +67,17 @@ Minimum signals to monitor:
 Run date: 2026-05-30
 
 - `npm run typecheck`: passed.
+- `npm run compile`: passed.
 - `npm run build:backend`: passed and produced `backend/dist/server.js`.
 - Compiled backend smoke test: passed for `GET /health`.
 - `npm run build:production`: passed, including typecheck, Hardhat compile, Vite frontend build, and backend bundle build.
 - `npm run test`: passed with `11` contract tests.
-- `npm install`: completed with the existing React peer warning pattern and `84` npm audit findings.
+- `npm audit fix`: completed non-forced remediation and reduced findings to `69` total, with `4` high findings remaining in CoFHE, Hardhat, and wallet dependency trees.
 
 ## Current Known Limitations
 
-- Reineira / Privara escrow, resolver, insurance, operator, CCTP, and settlement flows are documented but not implemented.
-- Lender portfolio data still needs an event indexer or subgraph-style service.
-- Auditor PDF export is not implemented.
+- Reineira / Privara full escrow, resolver, insurance, operator, CCTP, and settlement flows require configured protocol addresses, resolver contracts, and live operator validation.
+- Lender portfolio data now reads on-chain loan id arrays. A subgraph-style indexer is still recommended for history, filtering, and analytics at scale.
 - Browser decrypt-for-view experiences are not complete for all roles.
 - Bundle size warnings remain for wallet SDK, CoFHE SDK, MetaMask SDK, and TFHE WASM assets.
 - Render static site environment variables are build-time values; changes require redeployment.

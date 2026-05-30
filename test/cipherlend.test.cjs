@@ -216,6 +216,8 @@ describe("CipherLend CoFHE alignment", function () {
       await f.vault.connect(f.borrower).requestLoan(100_000, 12, terms);
 
       await expect(f.vault.connect(f.lender).fundLoan(1, { value: 100_000 })).to.emit(f.vault, "LoanFunded");
+      expect(await f.vault.getBorrowerLoanIds(f.borrower.address)).to.deep.equal([1n]);
+      expect(await f.vault.getLenderLoanIds(f.lender.address)).to.deep.equal([1n]);
       await f.vault.connect(f.borrower).makePayment(1, { value: 30_000 });
       let loan = await f.vault.loans(1);
       expect(loan.remainingBalance).to.equal(70_000);

@@ -1,4 +1,6 @@
 import { ethers, run, network } from "hardhat";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -37,6 +39,7 @@ async function main() {
   console.log("UnderwritingEngine:", deployed.underwritingEngine);
   console.log("LoanVault:", deployed.loanVault);
   console.log("PermitRegistry:", deployed.permitRegistry);
+  writeDeploymentFile(deployed);
 
   if (network.name === "sepolia" || network.name === "arbitrumSepolia" || network.name === "baseSepolia") {
     await verifyContract(deployed.borrowerRegistry, []);
@@ -44,6 +47,31 @@ async function main() {
     await verifyContract(deployed.loanVault, [deployed.underwritingEngine]);
     await verifyContract(deployed.permitRegistry, []);
   }
+}
+
+function writeDeploymentFile(deployed: Record<string, string>) {
+  const outputDir = join(process.cwd(), "deployments");
+  mkdirSync(outputDir, { recursive: true });
+
+  const payload = {
+    network: network.name,
+    chainId: network.config.chainId,
+    deployedAt: new Date().toISOString(),
+    contracts: deployed,
+    env: {
+      BORROWER_REGISTRY_ADDRESS: deployed.borrowerRegistry,
+      UNDERWRITING_ENGINE_ADDRESS: deployed.underwritingEngine,
+      LOAN_VAULT_ADDRESS: deployed.loanVault,
+      PERMIT_REGISTRY_ADDRESS: deployed.permitRegistry,
+      VITE_BORROWER_REGISTRY_ADDRESS: deployed.borrowerRegistry,
+      VITE_UNDERWRITING_ENGINE_ADDRESS: deployed.underwritingEngine,
+      VITE_LOAN_VAULT_ADDRESS: deployed.loanVault,
+    },
+  };
+
+  const filePath = join(outputDir, `${network.name}.json`);
+  writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`);
+  console.log("Deployment file:", filePath);
 }
 
 async function verifyContract(address: string, constructorArguments: unknown[]) {

@@ -10,6 +10,7 @@ import loansRoutes from "./routes/loans";
 import auditRoutes from "./routes/audit";
 import permitsRoutes from "./routes/permits";
 import decryptRoutes from "./routes/decrypt";
+import reineiraRoutes from "./routes/reineira";
 import { getProvider } from "./lib/fhenix";
 import {
   assertProductionEnv,
@@ -18,6 +19,7 @@ import {
   isProduction,
   requestTimeout,
 } from "./lib/runtime";
+import { getMetricsSnapshot, recordRequestMetric } from "./lib/metrics";
 
 assertProductionEnv();
 
@@ -58,16 +60,23 @@ app.use(express.json({ limit: process.env.JSON_BODY_LIMIT ?? "2mb" }));
 
 app.use((req, res, next) => {
   const requestId = req.header("x-request-id") ?? randomUUID();
+  const startedAt = Date.now();
   res.setHeader("x-request-id", requestId);
-  console.info(
-    JSON.stringify({
-      level: "info",
-      requestId,
-      method: req.method,
-      path: req.path,
-      event: "request_started",
-    })
-  );
+  res.on("finish", () => {
+    const durationMs = Date.now() - startedAt;
+    recordRequestMetric(`${req.method} ${req.path}`, res.statusCode, durationMs);
+    console.info(
+      JSON.stringify({
+        level: res.statusCode >= 500 ? "error" : "info",
+        requestId,
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        durationMs,
+        event: "request_finished",
+      })
+    );
+  });
   next();
 });
 
@@ -105,12 +114,17 @@ app.get("/ready", async (_, res) => {
   }
 });
 
+app.get("/metrics", (_, res) => {
+  res.json(getMetricsSnapshot());
+});
+
 app.use("/api/v1/profile", profileRoutes);
 app.use("/api/v1/underwriting", underwritingRoutes);
 app.use("/api/v1/loans", loansRoutes);
 app.use("/api/v1/audit", auditRoutes);
 app.use("/api/v1/permits", permitsRoutes);
 app.use("/api/v1/decrypt", decryptRoutes);
+app.use("/api/v1/reineira", reineiraRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });

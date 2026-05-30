@@ -2,6 +2,8 @@
 
 Date: 2026-05-04
 
+Updated: 2026-05-30
+
 ## Completed
 
 - Upgraded the CoFHE dependency set to `@cofhe/sdk@0.5.2`, `@cofhe/react@0.5.2`, `@fhenixprotocol/cofhe-contracts@0.1.3`, and `@cofhe/hardhat-plugin@0.5.2`.
@@ -18,7 +20,7 @@ Date: 2026-05-04
 - Replaced borrower simulated encryption/submission timers with SDK encryption progress, wallet-owned transaction submission, backend underwriting execution, retryable errors, and transaction state.
 - Replaced lender marketplace and portfolio static arrays with backend API calls and loading, error, and empty states.
 - Replaced auditor mocked verification with `/api/v1/audit/verify`, application permit validation, and returned ciphertext/proof metadata.
-- Updated `.env.example` with `COFHE_CHAIN_NAME`, `COFHE_RPC_URL`, supported testnet RPC examples, Vite contract address variables, and Reineira placeholders.
+- Updated `.env.example` with `COFHE_CHAIN_NAME`, `COFHE_RPC_URL`, supported testnet RPC examples, Vite contract address variables, and optional Reineira configuration.
 - Added Vite worker ESM output and manual wallet/CoFHE/vendor chunk splitting so heavy SDK and wallet code is no longer folded into one default bundle.
 
 ## Documentation Alignment
@@ -34,12 +36,13 @@ The implementation was checked against the current Fhenix CoFHE documentation:
 
 ## Reineira / Privara Status
 
-Reineira / Privara is documented as a follow-on integration, not implemented in this pass.
+Reineira / Privara now has an optional SDK-backed API boundary. Full settlement remains gated by deployed Reineira protocol configuration, resolver contracts, and operator validation.
 
 Current gaps:
 
-- No `@reineira-os/sdk` dependency is installed.
-- No Reineira encrypted escrow integration exists.
+- `@reineira-os/sdk` is installed.
+- API routes exist for Reineira status, balances, and plain escrow creation.
+- Full encrypted escrow integration is not enabled by default.
 - No condition or gate resolver contracts are implemented.
 - No insurance pool or policy contracts are implemented.
 - No Reineira operator flow, CCTP flow, or Arbitrum Sepolia settlement adapter exists.
@@ -49,17 +52,17 @@ Recommended mapping:
 - Map `LoanVault` loan lifecycle and collateral movement to Reineira encrypted escrow flows.
 - Map underwriting results and covenant checks to Reineira condition or gate resolvers.
 - Map lender downside protection to Reineira insurance policy and pool primitives.
-- Add `@reineira-os/sdk` only when the escrow, resolver, and policy boundaries are designed and testable.
+- Extend the current SDK boundary once escrow, resolver, and policy boundaries are designed and testable.
 
 ## Unfinished Product Work
 
-- Portfolio data still needs event indexing or a subgraph-style service; the current endpoint returns a live API shape with graceful empty state.
-- Audit PDF export is not implemented.
-- Explorer links are not wired because deployed contract addresses and transaction explorer bases are environment-specific.
+- Portfolio data now reads `LoanVault` borrower/lender loan id arrays. A subgraph-style service is still recommended for analytics and long-range history.
+- Audit PDF export is implemented through `/api/v1/audit/report`.
+- Explorer link helpers are wired for supported testnets where transaction hashes and addresses are returned.
 - Full transaction retry orchestration is partially present in the UI but still needs reusable shared components.
 - SDK decrypt-for-view UI for private borrower/lender/auditor displays is not fully built yet.
 - Contract deployment addresses are still environment placeholders.
-- Reineira / Privara escrow, resolver, insurance, operator, CCTP, and settlement flows remain future work.
+- Full Reineira / Privara encrypted escrow, resolver, insurance, operator, CCTP, and settlement flows require configured external protocol services and remain future work.
 
 ## Verification
 
@@ -79,7 +82,8 @@ Latest local results:
 - `npm run typecheck`: passed.
 - `npm run compile`: passed; Hardhat reported nothing left to compile after the migration artifacts were generated.
 - `npm run test`: passed; `11` tests passing across registry, underwriting, loan vault, and permit flows.
-- `npm run build`: passed; Vite produced production assets successfully with non-blocking third-party annotation and chunk-size warnings.
+- `npm run build:production`: passed; Vite produced production assets successfully with non-blocking third-party annotation and chunk-size warnings, and the backend bundle built successfully.
+- `npm audit fix`: completed non-forced remediation and reduced audit findings to `69` total with `4` remaining high findings documented in `docs/SECURITY_AUDIT_TRIAGE.md`.
 
 ## Known Build Notes
 

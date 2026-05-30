@@ -196,6 +196,14 @@ contract LoanVault is Ownable, ReentrancyGuard {
         return pendingLoanIds;
     }
 
+    function getBorrowerLoanIds(address borrower) external view returns (uint256[] memory) {
+        return borrowerLoans[borrower];
+    }
+
+    function getLenderLoanIds(address lender) external view returns (uint256[] memory) {
+        return lenderLoans[lender];
+    }
+
     function getPendingLoans() external view returns (PendingLoanView[] memory pendingLoans) {
         pendingLoans = new PendingLoanView[](pendingLoanIds.length);
         for (uint256 i = 0; i < pendingLoanIds.length; i++) {

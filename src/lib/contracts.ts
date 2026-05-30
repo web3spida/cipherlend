@@ -18,6 +18,16 @@ export const borrowerRegistryAbi = [
   },
 ] as const;
 
+export const loanVaultAbi = [
+  {
+    type: 'function',
+    name: 'fundLoan',
+    stateMutability: 'payable',
+    inputs: [{ name: 'loanId', type: 'uint256' }],
+    outputs: [],
+  },
+] as const;
+
 const zeroAddress = '0x0000000000000000000000000000000000000000' as const;
 
 export const contractAddresses = {

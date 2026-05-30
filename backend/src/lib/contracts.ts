@@ -18,6 +18,8 @@ const underwritingAbi = [
 
 const loanVaultAbi = [
   "function getPendingLoans() view returns ((uint256 loanId,address borrower,uint256 principal,uint256 interestRateBps,uint256 ltvBps,uint8 riskBand,uint256 termMonths,bytes32 underwritingScoreId)[])",
+  "function getBorrowerLoanIds(address) view returns (uint256[])",
+  "function getLenderLoanIds(address) view returns (uint256[])",
   "function requestLoan(uint256,uint256,(uint8,uint32,uint32,uint32,bytes,bytes,bytes,bytes))",
   "function fundLoan(uint256) payable",
   "function makePayment(uint256) payable",

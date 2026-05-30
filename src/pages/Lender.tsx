@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Filter, ChevronRight, Lock, CheckCircle2, ShieldAlert, Activity, X, Briefcase, LayoutGrid, ArrowUpRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useAccount } from 'wagmi';
+import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import TopNav from '../components/TopNav';
 import RiskBand from '../components/RiskBand';
 import Footer from '../components/Footer';
 import { api, type LoanOpportunity } from '../lib/api';
+import { contractAddresses, loanVaultAbi } from '../lib/contracts';
+import { getExplorerTxUrl } from '../lib/explorer';
 
 const bandLabel = (band: number) => ['-', 'AA', 'A', 'BBB', 'BB', 'B', 'Rejected'][band] ?? 'Pending';
 const rateFromBps = (bps: string) => Number(bps) / 100;
@@ -13,6 +15,8 @@ const pctFromBps = (bps: string) => Number(bps) / 100;
 
 export default function Lender() {
   const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
   const [activeTab, setActiveTab] = useState<'marketplace' | 'portfolio'>('marketplace');
   const [loans, setLoans] = useState<LoanOpportunity[]>([]);
   const [portfolio, setPortfolio] = useState<LoanOpportunity[]>([]);
@@ -60,27 +64,54 @@ export default function Lender() {
     };
   }, [address]);
 
-  const handleFund = () => {
-    if (!fundAmount || isNaN(Number(fundAmount)) || Number(fundAmount) <= 0) {
-      setToast({ message: 'Please enter a valid funding amount', type: 'error' });
-      return;
-    }
-    
-    setIsFunding(true);
-    setTimeout(() => {
-      setIsFunding(false);
-      setToast({ message: `Funding submitted for loan #${selectedLoan?.loanId}`, type: 'success' });
+  const handleFund = async () => {
+    try {
+      if (!selectedLoan || !address || !walletClient || !publicClient) {
+        throw new Error('Connect a wallet before funding.');
+      }
+      if (fundAmount !== selectedLoan.amount) {
+        throw new Error('Funding amount must exactly match the requested principal.');
+      }
+
+      setIsFunding(true);
+      const hash = await walletClient.writeContract({
+        chain: undefined,
+        account: address,
+        address: contractAddresses.loanVault,
+        abi: loanVaultAbi,
+        functionName: 'fundLoan',
+        args: [BigInt(selectedLoan.loanId)],
+        value: BigInt(selectedLoan.amount),
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      setToast({
+        message: `Funding confirmed for loan #${selectedLoan.loanId}${getExplorerTxUrl(hash) ? ' - explorer link available' : ''}`,
+        type: 'success',
+      });
+      setLoans((current) => current.filter((loan) => loan.loanId !== selectedLoan.loanId));
+      setPortfolio((current) => [...current, { ...selectedLoan, lender: address, status: 'Active' }]);
       setFundAmount('');
-      setTimeout(() => setSelectedLoan(null), 1500);
-    }, 2000);
+      setSelectedLoan(null);
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : 'Funding failed', type: 'error' });
+    } finally {
+      setIsFunding(false);
+    }
+  };
+
+  const selectLoan = (loan: LoanOpportunity) => {
+    setSelectedLoan(loan);
+    setFundAmount(loan.amount);
   };
 
   const handleClaimYield = () => {
+    if (portfolio.length === 0) {
+      setToast({ message: 'No funded loans are indexed for this wallet.', type: 'info' });
+      return;
+    }
     setIsClaiming(true);
-    setTimeout(() => {
-      setIsClaiming(false);
-      setToast({ message: 'Successfully claimed $4,350 in accrued yield', type: 'success' });
-    }, 2000);
+    setToast({ message: 'Yield is paid through borrower repayments; no separate claim contract exists.', type: 'info' });
+    setIsClaiming(false);
   };
 
   return (
@@ -120,19 +151,21 @@ export default function Lender() {
         >
           <div className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl p-6 md:p-8">
             <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-3">Total Deployed</div>
-            <div className="font-display text-4xl font-medium text-white">$2.4M</div>
+            <div className="font-display text-4xl font-medium text-white">{portfolio.length}</div>
           </div>
           <div className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl p-6 md:p-8">
             <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-3">Weighted Avg Rate</div>
-            <div className="font-display text-4xl font-medium text-emerald-400">9.2%</div>
+            <div className="font-display text-4xl font-medium text-emerald-400">
+              {portfolio.length ? (portfolio.reduce((sum, loan) => sum + rateFromBps(loan.rateBps), 0) / portfolio.length).toFixed(2) : '0.00'}%
+            </div>
           </div>
           <div className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl p-6 md:p-8">
             <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-3">Avg Risk Band</div>
-            <div className="font-display text-4xl font-medium text-indigo-400">BBB</div>
+            <div className="font-display text-4xl font-medium text-indigo-400">{portfolio.length ? bandLabel(Math.round(portfolio.reduce((sum, loan) => sum + loan.riskBand, 0) / portfolio.length)) : '-'}</div>
           </div>
           <div className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl p-6 md:p-8">
             <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-3">30-day Returns</div>
-            <div className="font-display text-4xl font-medium text-white">+$18,450</div>
+            <div className="font-display text-4xl font-medium text-white">{loans.length}</div>
           </div>
         </motion.div>
 
@@ -300,13 +333,13 @@ export default function Lender() {
                         </div>
                         <div className="flex gap-3">
                           <button 
-                            onClick={() => setSelectedLoan(loan)}
+                            onClick={() => selectLoan(loan)}
                             className="px-6 py-2.5 rounded-lg border border-white/20 hover:bg-white/10 text-sm font-medium text-white transition-all"
                           >
                             View Details
                           </button>
                           <button 
-                            onClick={() => setSelectedLoan(loan)}
+                            onClick={() => selectLoan(loan)}
                             className="px-6 py-2.5 rounded-lg bg-white text-black hover:bg-zinc-200 text-sm font-medium transition-all shadow-lg"
                           >
                             Fund This Loan
@@ -340,7 +373,7 @@ export default function Lender() {
                   {isClaiming ? (
                     <><Activity className="w-4 h-4 animate-spin" /> Claiming...</>
                   ) : (
-                    <><ArrowUpRight className="w-4 h-4" /> Claim All Yield ($4,350)</>
+                    <><ArrowUpRight className="w-4 h-4" /> Reconcile Repayments</>
                   )}
                 </button>
               </div>
@@ -365,11 +398,13 @@ export default function Lender() {
                         <td className="py-5 px-6 font-mono text-sm text-white">${Number(loan.amount).toLocaleString()}</td>
                         <td className="py-5 px-6 font-mono text-sm text-zinc-300">{rateFromBps(loan.rateBps).toFixed(2)}%</td>
                         <td className="py-5 px-6"><RiskBand band={bandLabel(loan.riskBand)} /></td>
-                        <td className="py-5 px-6 font-mono text-sm text-zinc-500">Indexed backend</td>
+                        <td className="py-5 px-6 font-mono text-sm text-zinc-500">
+                          {loan.nextPaymentDue ? new Date(loan.nextPaymentDue * 1000).toLocaleDateString() : 'Pending'}
+                        </td>
                         <td className="py-5 px-6 font-mono text-sm text-emerald-400">Proof-gated</td>
                         <td className="py-5 px-6">
                           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest border bg-zinc-500/10 text-zinc-400 border-zinc-500/20">
-                            Live
+                            {loan.status ?? 'Live'}
                           </span>
                         </td>
                       </tr>
@@ -461,7 +496,7 @@ export default function Lender() {
                     <div className="pt-4 border-t border-white/10">
                       <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">Proof Hash</div>
                       <div className="text-xs font-mono text-zinc-500 break-all bg-black/40 p-4 rounded-lg border border-white/5 shadow-inner">
-                        0x7f3a9b2c1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a
+                        {selectedLoan.underwritingScoreId ?? 'Score metadata available from API'}
                       </div>
                     </div>
                   </div>
@@ -476,7 +511,7 @@ export default function Lender() {
                         type="number" 
                         value={fundAmount}
                         onChange={(e) => setFundAmount(e.target.value)}
-                        placeholder="0.00"
+                        placeholder="0"
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 pl-10 text-white font-mono text-lg focus:outline-none focus:border-white/30 transition-all"
                       />
                     </div>
@@ -488,7 +523,7 @@ export default function Lender() {
                       {isFunding ? (
                         <><Activity className="w-4 h-4 animate-spin" /> Processing...</>
                       ) : (
-                        'Confirm Funding'
+                        'Confirm Wallet Funding'
                       )}
                     </button>
                   </div>

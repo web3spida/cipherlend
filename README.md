@@ -14,11 +14,12 @@ CipherLend is a privacy-preserving institutional credit prototype built with CoF
 - [Architecture](docs/ARCHITECTURE.md)
 - [Render Deployment Runbook](docs/RENDER_DEPLOYMENT.md)
 - [Production Readiness Checklist](docs/PRODUCTION_READINESS.md)
+- [Dependency Security Triage](docs/SECURITY_AUDIT_TRIAGE.md)
 - [CoFHE / Reineira Alignment Update](COFHE_REINEIRA_ALIGNMENT_UPDATE.md)
 
 ## Local Requirements
 
-- Node.js `20.11.1` or newer
+- Node.js `22.17.0` or newer
 - npm `10` or newer
 - A `.env` file based on `.env.example`
 
@@ -118,5 +119,5 @@ See [docs/RENDER_DEPLOYMENT.md](docs/RENDER_DEPLOYMENT.md) for the full runbook.
 - Do not reuse admin wallets as the API signer.
 - Do not deploy with zero contract addresses.
 - Do not expose raw borrower financial values to the API in production flows.
-- Reineira / Privara integration is not implemented yet; the current mapping is documented as follow-on work.
+- Reineira / Privara has an optional SDK-backed API boundary for status, balances, and plain escrow creation. Full protocol settlement rollout still requires deployed Reineira addresses, resolver design, and live operator validation.
 - Current dependency audit findings require a separate security triage before handling real funds.

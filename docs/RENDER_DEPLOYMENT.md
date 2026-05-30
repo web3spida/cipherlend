@@ -7,7 +7,7 @@ This project deploys as two Render services from `render.yaml`:
 
 ## Prerequisites
 
-- Node.js `20.11.1` or newer.
+- Node.js `22.17.0` or newer.
 - A Render account connected to the GitHub repository.
 - A WalletConnect project ID.
 - Deployed CipherLend contracts on one supported CoFHE network.
@@ -28,6 +28,7 @@ Supported chain names:
    - `UNDERWRITING_ENGINE_ADDRESS`
    - `LOAN_VAULT_ADDRESS`
    - `PERMIT_REGISTRY_ADDRESS`
+   The deploy script writes `deployments/<network>.json` locally with both backend and `VITE_*` env key names.
 3. Create a Render Blueprint from `render.yaml`.
 4. Fill all `sync: false` environment variables in Render.
 5. Deploy `cipherlend-api`.
@@ -43,7 +44,7 @@ Supported chain names:
 | Key | Required | Example | Notes |
 | --- | --- | --- | --- |
 | `NODE_ENV` | yes | `production` | Set by `render.yaml`. |
-| `NODE_VERSION` | yes | `20.11.1` | Set by `render.yaml`. |
+| `NODE_VERSION` | yes | `22.17.0` | Set by `render.yaml`. |
 | `COFHE_CHAIN_NAME` | yes | `baseSepolia` | Must match the deployed contract network. |
 | `COFHE_RPC_URL` | yes | `https://sepolia.base.org` | Use a production RPC provider for main traffic. |
 | `PRIVATE_KEY` | yes | Render secret | Dedicated API signer. Do not reuse admin wallets. |
@@ -55,6 +56,10 @@ Supported chain names:
 | `JSON_BODY_LIMIT` | no | `2mb` | Defaults to `2mb`. |
 | `RATE_LIMIT_WINDOW_MS` | no | `60000` | Defaults to one minute. |
 | `RATE_LIMIT_MAX` | no | `120` | Defaults to 120 requests per window. |
+| `REINEIRA_ENABLED` | no | `false` | Enables optional Reineira SDK routes when set to `true`. |
+| `REINEIRA_RPC_URL` | conditional | Arbitrum Sepolia RPC | Required only when Reineira is enabled. |
+| `REINEIRA_PRIVATE_KEY` | conditional | Render secret | Required only when Reineira is enabled and `PRIVATE_KEY` should not be reused. |
+| `REINEIRA_COORDINATOR_URL` | conditional | Coordinator URL | Required for operator relay/CCTP health checks. |
 
 In production, the API fails startup when required variables are missing or set to the zero address.
 
@@ -76,14 +81,14 @@ Vite reads these variables at build time. Changing a `VITE_*` value requires red
 API service:
 
 ```bash
-npm ci && npm run build:backend
+npm ci --include=dev && npm run build:backend
 npm run start:backend
 ```
 
 Static site:
 
 ```bash
-npm ci && npm run build:web
+npm ci --include=dev && npm run build:web
 ```
 
 Full local production verification:
@@ -97,6 +102,7 @@ npm run start:backend
 
 - `/health`: process-level liveness check. Render uses this path.
 - `/ready`: readiness check. Confirms required production configuration and RPC connectivity.
+- `/metrics`: in-process request counters and average route latency.
 
 Use `/ready` before routing real traffic or after changing RPC/contract environment variables.
 
@@ -113,4 +119,5 @@ Do not treat the deployment as production-ready until these are resolved:
 - `ALLOWED_ORIGINS` contains only production frontend origins.
 - `/ready` returns `status: ready`.
 - A transaction smoke test passes for borrower encryption, profile submission, underwriting, and loan request proof verification.
+- `npm run smoke:production` passes against deployed API and web URLs.
 - Render services have alerting for failed deploys and service health failures.

@@ -20,11 +20,19 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 export type LoanOpportunity = {
   loanId: number;
   borrower: string;
+  lender?: string;
   amount: string;
   rateBps: string;
   ltvBps: string;
   riskBand: number;
   termMonths: number;
+  issuedAt?: number;
+  nextPaymentDue?: number;
+  remainingBalance?: string;
+  status?: string;
+  statusId?: number;
+  underwritingScoreId?: string;
+  explorer?: Record<string, string | null>;
 };
 
 export const api = {
@@ -41,7 +49,10 @@ export const api = {
   verifyAudit: (body: { loanId?: string; borrowerAddress?: string; permitId: string; auditorAddress: string }) =>
     request<{
       borrower: string;
+      loanId: string | number | null;
+      loanStatus: number | null;
       proofHash: string;
+      scoreId: string;
       computedAt: number;
       exists: boolean;
       handles: Record<string, string>;
@@ -50,4 +61,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  downloadAuditReport: async (body: { loanId?: string; borrowerAddress?: string; permitId: string; auditorAddress: string }) => {
+    const response = await fetch(`${API_BASE}/audit/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody.details || errorBody.error || `Request failed: ${response.status}`);
+    }
+    return response.blob();
+  },
 };

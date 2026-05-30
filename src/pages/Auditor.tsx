@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, ShieldCheck, Lock, Download, CheckCircle2, FileText, Activity, ChevronRight } from 'lucide-react';
+import { Search, ShieldCheck, Lock, Download, CheckCircle2, FileText, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAccount } from 'wagmi';
 import TopNav from '../components/TopNav';
@@ -15,21 +15,45 @@ export default function Auditor() {
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState('');
   const [report, setReport] = useState<Awaited<ReturnType<typeof api.verifyAudit>> | null>(null);
+  const [recentReports, setRecentReports] = useState<Array<{ id: string; time: string; status: string }>>([]);
 
   const handleVerify = async () => {
     if (!loanId || !permit || !address) return;
     try {
       setIsVerifying(true);
       setError('');
-      const result = await api.verifyAudit({ loanId, permitId: permit, auditorAddress: address });
+      const target = loanId.startsWith('0x') ? { borrowerAddress: loanId } : { loanId };
+      const result = await api.verifyAudit({ ...target, permitId: permit, auditorAddress: address });
       setReport(result);
       setVerified(true);
+      setRecentReports((current) => [
+        { id: String(result.loanId ?? result.borrower), time: 'just now', status: 'Valid' },
+        ...current,
+      ].slice(0, 5));
     } catch (err) {
       setReport(null);
       setVerified(false);
       setError(err instanceof Error ? err.message : 'Verification failed');
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    if (!loanId || !permit || !address) return;
+    try {
+      const target = loanId.startsWith('0x') ? { borrowerAddress: loanId } : { loanId };
+      const blob = await api.downloadAuditReport({ ...target, permitId: permit, auditorAddress: address });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `cipherlend-audit-${loanId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Report download failed');
     }
   };
 
@@ -112,11 +136,7 @@ export default function Auditor() {
             <div className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl p-6">
               <h3 className="font-display font-medium text-lg mb-4 ml-1 text-white">Recent Verifications</h3>
               <div className="space-y-1">
-                {[
-                  { id: 'LOAN-0042', time: '2 hours ago', status: 'Valid' },
-                  { id: 'LOAN-0038', time: '5 hours ago', status: 'Valid' },
-                  { id: 'LOAN-0019', time: '1 day ago', status: 'Invalid Permit' },
-                ].map((log, i) => (
+                {(recentReports.length ? recentReports : [{ id: 'No live reports yet', time: 'Run a verification', status: 'Pending' }]).map((log, i) => (
                   <motion.div 
                     key={i} 
                     initial={{ opacity: 0, y: 10 }}
@@ -131,7 +151,9 @@ export default function Auditor() {
                     <span className={`text-[10px] font-mono uppercase tracking-widest px-2.5 py-1 rounded-md border ${
                       log.status === 'Valid' 
                         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                        : 'bg-red-500/10 text-red-400 border-red-500/20'
+                        : log.status === 'Pending'
+                          ? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                          : 'bg-red-500/10 text-red-400 border-red-500/20'
                     }`}>
                       {log.status}
                     </span>
@@ -236,9 +258,6 @@ export default function Auditor() {
                         <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest ml-1">Computation Proof Hash</div>
                         <div className="p-4 rounded-xl bg-black/40 border border-white/10 font-mono text-sm text-zinc-500 break-all flex justify-between items-start gap-4 hover:border-white/20 transition-colors shadow-inner">
                           <span className="leading-relaxed">{report?.proofHash ?? 'No proof hash returned'}</span>
-                          <a href="#" className="text-indigo-400 hover:text-white whitespace-nowrap text-xs flex items-center gap-1 transition-colors mt-1">
-                            View Explorer <ChevronRight className="w-3 h-3" />
-                          </a>
                         </div>
                       </div>
                     </motion.div>
@@ -249,7 +268,10 @@ export default function Auditor() {
                       transition={{ delay: 0.6 }}
                       className="pt-6 flex justify-end"
                     >
-                      <button className="px-6 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white font-medium flex items-center gap-2 transition-all text-sm">
+                      <button
+                        onClick={handleDownloadReport}
+                        className="px-6 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white font-medium flex items-center gap-2 transition-all text-sm"
+                      >
                         <Download className="w-4 h-4" /> Download Audit PDF
                       </button>
                     </motion.div>

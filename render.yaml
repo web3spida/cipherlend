@@ -5,7 +5,7 @@ services:
     plan: starter
     region: oregon
     branch: main
-    buildCommand: npm ci && npm run build:backend
+    buildCommand: npm ci --include=dev && npm run build:backend
     startCommand: npm run start:backend
     healthCheckPath: /health
     autoDeployTrigger: commit
@@ -13,13 +13,15 @@ services:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: 20.11.1
+        value: 22.17.0
       - key: JSON_BODY_LIMIT
         value: 2mb
       - key: RATE_LIMIT_WINDOW_MS
         value: "60000"
       - key: RATE_LIMIT_MAX
         value: "120"
+      - key: REINEIRA_ENABLED
+        value: "false"
       - key: ALLOWED_ORIGINS
         sync: false
       - key: COFHE_CHAIN_NAME
@@ -36,13 +38,19 @@ services:
         sync: false
       - key: PERMIT_REGISTRY_ADDRESS
         sync: false
+      - key: REINEIRA_RPC_URL
+        sync: false
+      - key: REINEIRA_PRIVATE_KEY
+        sync: false
+      - key: REINEIRA_COORDINATOR_URL
+        sync: false
 
   - type: web
     name: cipherlend-web
     runtime: static
     plan: starter
     branch: main
-    buildCommand: npm ci && npm run build:web
+    buildCommand: npm ci --include=dev && npm run build:web
     staticPublishPath: dist
     autoDeployTrigger: commit
     routes:
@@ -51,7 +59,7 @@ services:
         destination: /index.html
     envVars:
       - key: NODE_VERSION
-        value: 20.11.1
+        value: 22.17.0
       - key: VITE_API_BASE_URL
         sync: false
       - key: VITE_WALLETCONNECT_PROJECT_ID
